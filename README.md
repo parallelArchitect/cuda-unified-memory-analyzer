@@ -1,5 +1,11 @@
 # CUDA Unified Memory Analyzer
 
+![license MIT](https://img.shields.io/badge/license-MIT-blue)
+![CUDA supported](https://img.shields.io/badge/CUDA-supported-green)
+![platform Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
+![NVML supported](https://img.shields.io/badge/NVML-supported-green)
+![Unified Memory](https://img.shields.io/badge/CUDA-Unified%20Memory-orange)
+
 A hardware-aware CUDA diagnostic tool for analyzing Unified Memory migration behavior, residency stability, and transport performance on NVIDIA GPUs.
 
 All measurements come from live CUDA execution and runtime hardware queries.
