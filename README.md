@@ -91,24 +91,58 @@ DGX Spark requires a separate build because the system CPU architecture (Grace) 
 nvcc -O2 -std=c++17 -o um_analyzer um_analyzer_v7.cu -lnvidia-ml
 ```
 
+
+
 **Run**
 
 ```bash
 ./um_analyzer
 ```
 
+
+
+## Command Line Options
+
+Run on a specific GPU:
+
+```bash
+./um_analyzer --device 0
+```
+
+
+
+Run on all GPUs sequentially:
+
+```bash
+./um_analyzer --all-devices
+```
+
+
+
+List available GPUs:
+
+```bash
+./um_analyzer --list-devices
+```
+
+
+
 Each execution writes a structured JSON report to:
 
 ```
+
+
 runs/<timestamp>_GPU<ID>_<UUID>/run.json
 ```
+
+
 
 ---
 
 ## Related Work
 
-* [https://github.com/parallelArchitect/pascal-um-benchmark](https://github.com/parallelArchitect/pascal-um-benchmark) — Pascal Unified Memory benchmark
-* [https://github.com/parallelArchitect/gpu-pcie-path-validator](https://github.com/parallelArchitect/gpu-pcie-path-validator) — PCIe path validator for NVIDIA GPUs
+* pascal-um-benchmark-um-benchmark) — Pascal Unified Memory benchmark
+* gpu-pcie-path-validator — PCIe path validator for NVIDIA GPUs
 
 ---
 
