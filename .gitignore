@@ -1,0 +1,5 @@
+um_analyzer
+runs/
+*.o
+*.out
+*.log
