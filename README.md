@@ -141,9 +141,8 @@ runs/<timestamp>_GPU<ID>_<UUID>/run.json
 
 ## Related Work
 
-* pascal-um-benchmark-um-benchmark) — Pascal Unified Memory benchmark
-* gpu-pcie-path-validator — PCIe path validator for NVIDIA GPUs
-
+- [pascal-um-benchmark](https://github.com/parallelArchitect/pascal-um-benchmark) — Pascal Unified Memory benchmark
+- [gpu-pcie-path-validator](https://github.com/parallelArchitect/gpu-pcie-path-validator) — PCIe path validator for NVIDIA GPUs
 ---
 
 ## Author
