@@ -14,11 +14,11 @@ All measurements come from live CUDA execution and runtime hardware queries. No 
 
 ## Platform Support
 
-| Paradigm | Hardware | Detection |
+| Paradigm | Hardware | Status |
 |---|---|---|
-| `FULL_EXPLICIT` | Discrete GPU, PCIe transport (Pascal, Ampere, Ada, Hopper, Blackwell) | Runtime |
-| `FULL_HARDWARE_COHERENT` | Coherent UMA, C2C interconnect (DGX Spark / GB10, Grace Blackwell, Grace Hopper) | Runtime |
-| `FULL_SOFTWARE_COHERENT` | HMM / software-managed coherence | Runtime |
+| `FULL_EXPLICIT` | Discrete GPU, PCIe transport (Pascal, Ampere, Ada, Hopper, Blackwell) | Validated on GTX 1080 (SM 6.1) |
+| `FULL_HARDWARE_COHERENT` | Coherent UMA, C2C interconnect (DGX Spark / GB10, Grace Blackwell, Grace Hopper) | Detection implemented, hardware validation pending |
+| `FULL_SOFTWARE_COHERENT` | HMM / software-managed coherence | Detection implemented, hardware validation pending |
 
 ---
 
@@ -182,7 +182,7 @@ Key fields in `gpu` block:
 }
 ```
 
-`cupti_migration_data_available` is false when CUPTI initialize successfully but migration byte counters return zero — a known limitation on some platforms including GB10 (SM 12.1).
+`cupti_migration_data_available` is false when CUPTI initialises successfully but migration byte counters return zero — a known limitation on some platforms including GB10 (SM 12.1).
 
 `cupti_thrashing_events` is always 0 on Pascal SM 6.x — hardware limitation, not a bug.
 
@@ -190,13 +190,13 @@ Key fields in `gpu` block:
 
 ## DGX Spark
 
-The analyzer includes full detection and adaptation logic for hardware-coherent Unified Memory platforms.
+The analyzer includes detection and adaptation logic for hardware-coherent Unified Memory platforms. This logic has been implemented and unit-tested without GB10 hardware using `test_coherent.cpp` (61/61 passing). End-to-end validation on real DGX Spark hardware is pending.
 
-On coherent platforms:
+Implemented and unit-tested:
 * `direction_trend` uses `GPU_OWNERSHIP_DEMAND` / `CPU_RETENTION` labels instead of H2D/D2H
-* `cudaMemGetInfo` under reporting is detected and corrected for allocation ceiling
+* `cudaMemGetInfo` underreporting detected and corrected for allocation ceiling
 * Structural OOM condition (`zombie_oom_structural`) detected pre-run
-* CUPTI `cpu_faults` and `throttling` counters active (Volta+ / SM 7.0+)
+* CUPTI `cpu_faults` and `throttling` counters gated on Volta+ (SM 7.0+, includes GB10 SM 12.1)
 * Pass labels adapt to C2C semantics — no PCIe migration on coherent fabric
 
 Known CUPTI limitation on GB10: `BYTES_TRANSFER_HTOD` / `BYTES_TRANSFER_DTOH` may not appear in traces. `cupti_migration_data_available` flags this condition in JSON output.
