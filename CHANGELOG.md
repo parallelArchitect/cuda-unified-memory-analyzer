@@ -4,6 +4,49 @@ All notable changes to cuda-unified-memory-analyzer are documented here.
 
 ---
 
+## v8.2 — schema 2.7
+
+### Added
+
+**Fault pressure metrics**
+- `fault_pressure_index` — `fault_rate_per_sec * fault_burst_ratio`; compact single-number roll-up for cross-run comparison. Baseline GTX 1080 ~197–205, danger band ~234–274.
+
+**Migration quality metrics**
+- `migration_efficiency` — `1 / maf`; 1.0 = ideal, <0.5 = moderate amplification, <0.3 = heavy
+- `migration_oscillation_ratio` — `min(H2D,D2H) / max(H2D,D2H)`; 0.0 = one-direction, >0.6 = oscillation, >0.85 = severe CPU↔GPU ping-pong
+
+**Residency decay**
+- `residency_half_life_ratio` — first warm ratio where `steady_tail_ratio * (1 + steady_cv)` exceeds 1.5× baseline; `null` if threshold never reached
+
+**Managed Memory Intent Inspector**
+- `um_preferred_location` — `cudaMemRangeAttributePreferredLocation` queried in child after GPU work; `n/a (arch)` on Pascal (no automatic hint)
+- `um_last_prefetch_location` — `cudaMemRangeAttributeLastPrefetchLocation`; reflects last `cudaMemPrefetchAsync` target
+- Both fields populate on Volta+/UMA platforms (DGX Spark) where driver sets location hints automatically
+
+**Unified Memory Headroom Predictor**
+- `um_headroom_ratio` — `host_free_gib / host_cap_gib`; >2.0 LARGE, 1.3–2.0 SAFE, 1.0–1.3 LOW, <1.0 RISK
+- Displayed in VERDICT block as `headroom` line
+- Predicts UM exhaustion before workload launch; directly relevant to DGX Spark OOM freezes
+
+**LLM KV-Cache Pressure Detector**
+- `llm_pressure_score` — `fault_pressure_index * (1 - migration_efficiency) / um_headroom_ratio`
+- `llm_pressure_level` — LOW (<100) / MODERATE (100–200) / HIGH (>200)
+- Captures the LLM failure triangle: paging stress × migration cost ÷ remaining headroom
+- Displayed in VERDICT block as `llm_kv` line
+
+**PSI Memory Pressure Snapshot**
+- `memory_psi_state` — Linux PSI memory stall classification: LOW / ELEVATED / HIGH / n/a
+- `memory_psi_some_avg10_start/end` — % some-stall at run start and end
+- `memory_psi_full_avg10_end` — % full-stall at run end
+- `memory_psi_some_total_delta_us` — cumulative stall microseconds during run
+- Read from `/proc/pressure/memory` when available (Linux 4.20+, PSI-enabled kernel)
+- Displayed in VERDICT block as `host_psi` line; distinguishes GPU-side UM instability from host-side reclaim pressure
+
+### Schema
+- Bumped to `2.7`; all new fields added to `gpu` block in `run.json`
+
+---
+
 ## v8.1 — schema 2.6
 
 ### Added
