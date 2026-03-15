@@ -79,7 +79,7 @@ Previous 4-state tree (`HEALTHY` / `HEALTHY_LIMITED` / `DEGRADED` / `CRITICAL`) 
 - Added to JSON: `direction_ratio`, `direction_trend`
 
 **CUPTI migration data availability flag**
-- `cupti_migration_data_available` — false when CUPTI initialises but `bytes_htod + bytes_dtoh = 0`
+- `cupti_migration_data_available` — false when CUPTI initializes but `bytes_htod + bytes_dtoh = 0`
 - Addresses known GB10 / SM 12.1 limitation where `BYTES_TRANSFER_HTOD` / `BYTES_TRANSFER_DTOH` may not appear in traces despite CUPTI running
 - Display note printed when bytes are zero: `[note: migration bytes not captured — known CUPTI limitation on some platforms]`
 
