@@ -1,291 +1,286 @@
 # CUDA Unified Memory Analyzer
-![license MIT](https://img.shields.io/badge/license-MIT-blue)
-![CUDA supported](https://img.shields.io/badge/CUDA-supported-green)
-![platform Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
-![NVML supported](https://img.shields.io/badge/NVML-supported-green)
-![CUPTI supported](https://img.shields.io/badge/CUPTI-supported-green)
-![Unified Memory](https://img.shields.io/badge/CUDA-Unified%20Memory-orange)
-![Architecture Adaptive](https://img.shields.io/badge/architecture-adaptive-green)
 
-A hardware-aware CUDA diagnostic tool for analyzing Unified Memory migration behavior, residency stability, and transport performance on NVIDIA GPUs.
+Linux tool for observing CUDA Unified Memory behavior at runtime.
 
-All measurements come from live CUDA execution and runtime hardware queries. No hardcoded architecture assumptions — platform detection, transport labels, verdict logic, and CUPTI counter gating all adapt at runtime.
+Focus: page fault migration, host↔device data movement (HtoD / DtoH), and memory pressure signals.
 
 ---
 
-## Use Cases
+## What it does
 
-- Diagnose Unified Memory thrashing on discrete PCIe and coherent UMA systems
-- Evaluate migration efficiency on PCIe vs NVLink systems
-- Detect host memory pressure before launching LLM workloads
-- Validate system stability before training runs
-- Investigate migration oscillation between CPU and GPU
-- Assess LLM KV-cache memory risk on DGX Spark and similar UMA platforms
-- Generate structured JSON diagnostics for automated pipeline health checks
+Runs controlled memory access patterns and collects runtime signals using CUDA, CUPTI, and NVML.
 
----
+Exposes:
 
-## Platform Support
-
-| Paradigm | Hardware | Status |
-|---|---|---|
-| `FULL_EXPLICIT` | Discrete GPU, PCIe transport (Pascal, Ampere, Ada, Hopper, Blackwell) | Validated on GTX 1080 (SM 6.1) |
-| `FULL_HARDWARE_COHERENT` | Coherent UMA, C2C interconnect (DGX Spark / GB10, Grace Blackwell, Grace Hopper) | Detection implemented with architecture-adaptive logic. Hardware validation pending. |
-| `FULL_SOFTWARE_COHERENT` | HMM / software-managed coherence | Detection implemented with architecture-adaptive logic. Hardware validation pending. |
+- GPU page faults
+- Host ↔ Device migration (bytes_htod / bytes_dtoh)
+- Fault distribution (steady vs burst)
+- Migration overhead (MAF, BPF)
+- Pressure and stability signals
+- Residency vs migration behavior
 
 ---
 
-## Measurements and Diagnostics
+## Why this exists
 
-**Memory behavior**
-* Cold path — page-fault migration latency (child process isolated)
-* Warm path — resident access latency after prefetch
-* Pressure path — repeated oversubscription passes used to observe latency variance convergence, settling behavior, and migration stability
-* Unified Memory paradigm detection at runtime
-* Working-set residency boundary detection
+Unified Memory simplifies development, but obscures key runtime behaviors:
 
-**Migration stability**
-* Thrash scoring and state classification (`STABLE` / `SETTLED_UNSTABLE` / `UNSTABLE` / `SEVERE_UNSTABLE`)
-* Migration Amplification Factor (MAF) — total migration volume relative to working set
-* Bytes Per Fault — `bpf_htod` and `bpf_total` — per-fault migration cost
-* Settling time — wall-clock ms from first pressure pass to first stable pass
-* Fault density, symmetry, settling detection
+- when data is actually moving
+- how often faults occur
+- whether memory is stable or thrashing
+- why systems slow down or become unresponsive under load
 
-**CUPTI hardware instrumentation**
-* GPU page fault counts — direct from CUDA driver
-* H2D and D2H migration byte totals — hardware measured
-* CPU page fault counter — Volta+ / coherent platforms
-* Thrashing and throttling event counters — Volta+
-* Architecture-portable — same API call on all platforms, behavior resolves at runtime
+This tool makes those behaviors observable.
 
-**Transport**
-* Real transport bandwidth — pinned H2D / D2H transfer probe
-* PCIe link health — replay counter delta
-* NVLink telemetry — presence, link count, error counters, utilization
+One observed failure mode on unified memory platforms is systems becoming
+unresponsive under memory pressure instead of raising a CUDA OOM error.
 
-**System telemetry**
-* Thermal and power state — temperature drift, power draw vs TDP, P-state
-* VRAM characteristics — total, free, memory type, bus width
-* Host free RAM — measured live from the operating system
-* Host allocation cap — based on available host memory, coherent-platform corrected
-
-**Verdict system**
-* `HEALTHY` — all subsystems nominal, full ratio ladder executed
-* `HEALTHY_LIMITED` — core ratios (≤ 1.00x) clamped by host memory, hardware clean
-* `MIGRATION_PRESSURE` — hardware clean, paired instability: `thrash_score >= 0.15 AND maf >= 1.5`, OR `settle=NO AND cv_mean > 0.15`
-* `UM_THRASHING` — hardware clean, workload at migration boundary: `thrash_score >= 0.45 AND maf >= 2.0 AND settle=NO`
-* `DEGRADED` — physical subsystem fault: thermal throttle, power cap, PCIe replay elevated
-* `CRITICAL` — cold child failure, thermal fault, or unsafe memory condition
-
-> **Note:** Verdict thresholds (`thrash_score`, `maf`, `cv_mean`) were calibrated on Pascal SM 6.1 (GTX 1080) with PCIe Gen3 x16. These values are not universal — NVLink systems, Volta+, and coherent UMA platforms (DGX Spark) will exhibit different baseline MAF and fault rate ranges. Cross-architecture threshold refinement is ongoing.
+This tool measures the memory conditions and signal patterns that precede
+that state.
 
 ---
 
-## Key Metrics
+## How it works
+
+The analyzer runs three passes:
+
+### COLD pass
+- Fresh process (no GPU context)
+- First-touch page faults (CPU → GPU)
+- Measures actual migration path
+
+### WARM pass
+- Prefetch to GPU
+- Measures steady-state resident access
+- Confirms residency stability
+
+### PRESSURE pass
+- Sustained access at highest safe ratio
+- Detects thrashing, oscillation, and instability under load
+
+Verdict is derived from combined signals, not a single metric.
+
+---
+
+## Key metrics
 
 ### Migration Amplification Factor (MAF)
+
 ```
 MAF = (htod_bytes + dtoh_bytes) / total_pass_bytes
 ```
-~1.0 clean residency. 2–4 moderate overhead. >4 severe amplification.
 
-High MAF with settled pressure and low thrash_score is normal operation on discrete PCIe — MAF alone does not indicate a problem.
+- ~1.0 → resident behavior
+- 2–4 → moderate migration overhead
+- >4 → heavy migration amplification
+
+Note: On PCIe systems, elevated MAF alone does not indicate a failure condition.
+
+High MAF values should be interpreted alongside fault rate, burst behavior, and
+residency signals.
+
+---
 
 ### Bytes Per Fault (BPF)
+
 ```
 bpf_htod  = htod_bytes / gpu_page_faults
 bpf_total = (htod_bytes + dtoh_bytes) / gpu_page_faults
 ```
-**Pascal / PCIe:** migration efficiency — larger = efficient bulk copy, small = thrash
-**DGX Spark C2C:** coherence locality — larger = ownership churn across coherent fabric
-The gap between `bpf_htod` and `bpf_total` reveals reverse migration volume.
 
-### Thrash score
-```
-thrash_score = cv_instability × fault_density × settling_factor
-settling_factor = 0.4 if pressure converged, 1.0 if not
-```
-
-| State | Score | Description |
-|---|---|---|
-| `STABLE` | < 0.15 | Clean, settled |
-| `SETTLED_UNSTABLE` | 0.15–0.45 | Settled but noisy steady region |
-| `UNSTABLE` | 0.15–0.45 | Did not settle |
-| `SEVERE_UNSTABLE` | > 0.45 | Never settled, active instability |
-
-### Direction ratio
-```
-direction_ratio = max(H2D, D2H) / min(H2D, D2H)
-```
-≤ 1.50 = `BALANCED`. Above threshold:
-* **PCIe / NVLink:** `H2D_DOMINANT` (normal fault-driven inbound) or `D2H_DOMINANT` (reverse migration)
-* **Coherent C2C (GB10):** `GPU_OWNERSHIP_DEMAND` or `CPU_RETENTION` — reflects coherence ownership pattern, not physical transfer direction
-
-### Fault pressure metrics *(v8.2)*
-```
-fault_pressure_index = fault_rate_per_sec * fault_burst_ratio
-```
-Single-number roll-up for cross-run comparison. Baseline GTX 1080 ~197–205. Danger band ~234–274 indicating elevated Unified Memory fault burst pressure.
-
-### Migration oscillation ratio *(v8.2)*
-```
-oscillation_ratio = min(H2D, D2H) / max(H2D, D2H)
-```
-0.0 = one-direction migration. >0.6 = oscillation. >0.85 = severe CPU↔GPU ping-pong.
-
-### LLM KV-cache pressure detector *(v8.2)*
-```
-llm_pressure_score = fault_pressure_index * (1 - migration_efficiency) / um_headroom_ratio
-```
-Captures paging stress × migration cost ÷ remaining headroom. `LOW` < 100, `MODERATE` 100–200, `HIGH` > 200. Predicts system instability before launching large context models on DGX Spark.
-
-### Unified Memory headroom *(v8.2)*
-```
-um_headroom_ratio = host_free_gib / host_cap_gib
-```
-Predicts UM pool exhaustion. `SAFE` ≥ 1.3. `LOW` 1.0–1.3. `RISK` < 1.0.
+Describes migration efficiency per fault.
 
 ---
 
-## Architecture Support
+### Fault pressure
 
-Supports NVIDIA GPU architectures from Pascal through Blackwell with runtime platform detection. Validated on Pascal (GTX 1080, SM 6.1). DGX Spark / GB10 (SM 12.1) support included with platform-aware detection — validation on Spark hardware pending.
+```
+fault_pressure_index = fault_rate_per_sec * fault_burst_ratio
+```
 
-Initial development and baseline calibration were performed on a GTX 1080 (Pascal SM 6.1), the primary hardware used during development. Pascal uses explicit Unified Memory migration over PCIe without hardware coherence, which makes migration faults, residency boundaries, and paging pressure easier to observe during diagnostics. The analyzer itself is architecture-adaptive and designed for newer platforms as well, including NVLink systems and coherent UMA platforms such as DGX Spark. Results from those systems help expand the cross-architecture Unified Memory diagnostic baseline.
+Used to detect sustained pressure and burst behavior.
+
+---
+
+### Directional behavior
+
+```
+direction_ratio = total_htod / total_dtoh
+```
+
+Helps distinguish forward migration (CPU → GPU) from eviction / fallback (GPU → CPU).
+
+---
+
+## Output
+
+### Terminal
+
+- Per-pass summaries
+- Ratio scaling behavior
+- Final verdict
+
+### JSON
+
+```
+runs/um_YYYYMMDD_HHMMSS_GPU0_<uuid>/run.json
+```
+
+Includes:
+
+- gpu_page_faults
+- bytes_htod / bytes_dtoh
+- maf
+- fault_rate_per_sec
+- fault_burst_ratio
+- pressure_score
+- transport (PCIe / NVLink / UMA)
+- platform_caps
+- stability indicators
+
+---
+
+## Verdict system
+
+| Verdict | Meaning |
+|---|---|
+| `HEALTHY` | Stable, resident behavior |
+| `HEALTHY_LIMITED` | Stable but memory constrained |
+| `MIGRATION_PRESSURE` | Elevated migration under load |
+| `UM_THRASHING` | Active instability boundary |
+| `DEGRADED` | Hardware-level issue |
+| `CRITICAL` | Fatal / unrecoverable state |
+
+---
+
+## Platform model
+
+Detected at runtime — no hardcoding.
+
+| Paradigm | Meaning |
+|---|---|
+| `FULL_EXPLICIT` | Discrete GPU, PCIe migration |
+| `FULL_HARDWARE_COHERENT` | Unified DRAM systems (DGX Spark GB10, Grace Blackwell) |
+| `FULL_SOFTWARE_COHERENT` | OS-managed coherence |
+
+Transport awareness:
+
+- PCIe → migration cost dominated by interconnect bandwidth and latency
+- NVLink → lower latency and higher bandwidth relative to PCIe
+- UMA → shared memory pool; pressure replaces explicit migration
 
 ---
 
 ## Build
 
-**Requirements**
-* Linux
-* CUDA Toolkit 12+
-* NVML (`libnvidia-ml`)
-* CUPTI (`libcupti`) — ships with CUDA Toolkit
-* C++17
+Requirements:
 
-**Compile**
+- Linux (x86_64 / aarch64)
+- CUDA 12.x or 13.x
+- NVML (`libnvidia-ml`)
+- CUPTI (`libcupti`)
+- C++17
+
+Compile:
+
 ```bash
-nvcc -O2 -std=c++17 -o um_analyzer um_analyzer_v8_2.cu -lcupti -lnvidia-ml
+nvcc -O2 -std=c++17 \
+  -I/usr/local/cuda/include \
+  um_analyzer.cu \
+  -o um_analyzer \
+  -lcudart -lcupti -lnvidia-ml
 ```
 
-**Run**
+---
+
+## Run
+
 ```bash
 ./um_analyzer
 ```
 
-**DGX Spark / Grace (ARM64)**
-```bash
-nvcc -O2 -std=c++17 -o um_analyzer um_analyzer_v8_2.cu -lcupti -lnvidia-ml -arch=sm_120
+Options:
+
 ```
+--device N          test specific GPU index
+--all-devices       test all GPUs
+--list-devices      list available GPUs
+--cupti-debug       dump raw CUPTI UM records to stderr
+```
+
+`--cupti-debug` writes every CUPTI unified memory activity record to stderr —
+counter kind, value, timestamps. Useful for understanding what signals are
+present on a given platform, particularly on unified memory architectures
+where behavior differs from discrete PCIe systems.
 
 ---
 
-## Command Line Options
+## Status
 
-```bash
-./um_analyzer                  # run on default GPU
-./um_analyzer --device 0       # run on specific GPU
-./um_analyzer --all-devices    # run on all GPUs sequentially
-./um_analyzer --list-devices   # list available GPUs
-```
+Core functionality is implemented using CUDA, CUPTI, and NVML APIs.
 
-Each execution writes a structured JSON report to:
-```
-runs/<timestamp>_GPU<ID>_<UUID>/run.json
-```
+Behavior varies by platform and driver. This tool is actively being exercised
+across different systems to understand how Unified Memory signals behave under
+real workloads.
 
----
+Findings are used to investigate failure modes such as:
 
-## JSON Output Schema
+- unexpected slowdowns
+- memory pressure instability
+- systems becoming unresponsive instead of reporting CUDA OOM
 
-Current schema version: **2.7**
-
-**Example output (Pascal reference system)**
-
-Key fields in `gpu` block:
-```json
-{
-  "thrash_score": 0.06,
-  "thrash_state": "STABLE",
-  "maf": 3.07,
-  "migration_efficiency": 0.326,
-  "migration_oscillation_ratio": 0.53,
-  "bpf_htod_bytes": 49700000,
-  "bpf_total_bytes": 87100000,
-  "settled": true,
-  "settle_class": "STABLE",
-  "settle_ms": 10496.0,
-  "cupti_available": true,
-  "cupti_migration_data_available": true,
-  "cupti_gpu_page_faults": 2764,
-  "cupti_bytes_htod": 176412426240,
-  "cupti_bytes_dtoh": 120176771072,
-  "cupti_thrashing_events": 0,
-  "fault_rate_per_sec": 74.6,
-  "fault_max_window_rate_per_sec": 202.9,
-  "fault_burst_ratio": 2.71,
-  "fault_pressure_index": 201.9,
-  "residency_half_life_ratio": 0.75,
-  "direction_ratio": 1.39,
-  "direction_trend": "BALANCED",
-  "um_preferred_location": "GPU",
-  "um_last_prefetch_location": "GPU",
-  "um_headroom_ratio": 1.70,
-  "llm_pressure_score": 70.2,
-  "llm_pressure_level": "LOW",
-  "memory_psi_state": "LOW"
-}
-```
-
-`cupti_migration_data_available` is false when CUPTI initializes successfully but migration byte counters return zero — a known limitation on some platforms including GB10 (SM 12.1).
-
-`cupti_thrashing_events` is always 0 on Pascal SM 6.x — hardware limitation, not a bug.
-
-`um_preferred_location` / `um_last_prefetch_location` show `n/a` on Pascal (SM 6.x) — no automatic preferred location hint on discrete FULL_EXPLICIT platforms. Populated on Volta+/UMA systems.
-
-`memory_psi_*` fields present only when `/proc/pressure/memory` is available (Linux 4.20+, PSI-enabled kernel).
+The goal is to make these behaviors observable and explainable.
 
 ---
 
-## DGX Spark
+## Community data
 
-The analyzer includes detection and adaptation logic for hardware-coherent Unified Memory platforms. This logic has been implemented and unit-tested without GB10 hardware using `test_coherent.cpp` (61/61 passing). End-to-end validation on real DGX Spark hardware is pending.
+Behavior varies across architectures, drivers, and system configurations.
 
-Implemented and unit-tested:
-* `direction_trend` uses `GPU_OWNERSHIP_DEMAND` / `CPU_RETENTION` labels instead of H2D/D2H
-* `cudaMemGetInfo` underreporting detected and corrected for allocation ceiling
-* Structural OOM condition (`zombie_oom_structural`) detected pre-run
-* CUPTI `cpu_faults` and `throttling` counters gated on Volta+ (SM 7.0+, includes GB10 SM 12.1)
-* Pass labels adapt to C2C semantics — no PCIe migration on coherent fabric
+Results from different systems are used to understand how Unified Memory signals
+behave in practice, particularly on newer platforms where migration and memory
+semantics differ from discrete PCIe systems.
 
-Known CUPTI limitation on GB10: `BYTES_TRANSFER_HTOD` / `BYTES_TRANSFER_DTOH` may not appear in traces. `cupti_migration_data_available` flags this condition in JSON output.
+Observed data is applied to investigate real failure modes (for example, systems
+becoming unresponsive instead of reporting CUDA OOM) and to identify underlying
+causes.
 
-Engineers running the analyzer on DGX Spark / GB10 systems are encouraged to share results to expand the cross-architecture Unified Memory diagnostic baseline.
-
----
-
-## Related Work
-
-- [pascal-um-benchmark](https://github.com/parallelArchitect/pascal-um-benchmark) — Pascal Unified Memory benchmark suite
-- [gpu-pcie-path-validator](https://github.com/parallelArchitect/gpu-pcie-path-validator) — PCIe path validator for NVIDIA GPUs
+Logs and results from real workloads help improve interpretation and make these
+behaviors more explainable as results are collected across architectures and
+configurations.
 
 ---
 
-## Field Usage
+## Validated hardware
 
-The analyzer has already been used in live debugging discussions around CUDA Unified Memory behavior and telemetry limitations.
+| Platform | Paradigm | Status |
+|---|---|---|
+| Discrete GPU, PCIe | `FULL_EXPLICIT` | Validated — multiple generations |
+| DGX Spark GB10, coherent UMA | `FULL_HARDWARE_COHERENT` | Detection implemented, runtime validation in progress |
 
-Examples:
+---
 
-- NVIDIA Developer Forum — incorrect VRAM metrics with `cudaMallocManaged`
-  https://forums.developer.nvidia.com/t/incorrect-vram-usage-metrics-using-unified-cudamallocmanaged/362491
+## Companion tool
+
+[spark-gpu-throttle-check](https://github.com/parallelArchitect/spark-gpu-throttle-check)  
+GPU power and thermal diagnostics for DGX Spark systems. Helps identify power
+delivery limits (such as USB PD constraints) that may reduce clocks under
+sustained load.
+
+---
+
+## Acknowledgements
+
+[cuda-unified-memory-analyzer fork](https://github.com/sonusflow/cuda-unified-memory-analyzer)  
+Community fork by adi-sonusflow. Patches, CUPTI signal interpretation, and
+execution model changes from this fork directly influenced the debugging approach
+and runtime signal analysis used in this project.
 
 ---
 
 ## Author
 
-Joe McLaren (parallelArchitect)
+parallelArchitect  
 Human-directed GPU engineering with AI assistance.
 
 ---
@@ -298,5 +293,4 @@ gpu.validation@gmail.com
 
 ## License
 
-MIT License
-Copyright (c) 2026 Joe McLaren
+MIT

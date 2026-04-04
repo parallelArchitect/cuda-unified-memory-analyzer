@@ -4,6 +4,67 @@ All notable changes to cuda-unified-memory-analyzer are documented here.
 
 ---
 
+## v8.3 — schema 2.8
+
+### Added
+
+**Per-ratio cold pass CUPTI data**
+- `child_gpu_faults`, `child_bytes_htod`, `child_bytes_dtoh` added to `ResultRow`
+- Child process emits these via JSON IPC after `cupti_flush()`
+- Parent parses from 4096-byte buffer (increased from 512 — root cause of missing per-ratio data)
+- `live_line()` prints fault/htod/dtoh under each cold row when faults > 0
+
+**COLD and WARM table column headers**
+- `SIZE STATUS p50 p90 p99 max tail cv jump faults htod dtoh`
+- Single line per ratio, aligned columns, separator line under headers
+
+**GB10 / DGX Spark platform support**
+- `arch_family()` and `arch_detail()`: `maj==12 && min==1` → `"Blackwell GB10"` (SM 12.1)
+- Distinct from SM 12.0 (RTX 50xx Blackwell) and SM 10.0 (B200 datacenter)
+- `throttle_threshold_from_arch()`: `"Blackwell_GB10"` → 95°C firmware cutoff
+- Thermal band check on `FULL_HARDWARE_COHERENT`: `THERMAL_ELEVATED` at 85°C, `THERMAL_THROTTLE` at 95°C using raw temperature, not NVML throttle bits
+- NVML throttle bits (`HwSlowdown`, `SwPowerCap`) gated out on UMA platforms — always set by SoC power management, not meaningful for fault detection
+
+**OOM line — hardware-aware**
+- Discrete GPU: `burst=Xx maf=X.X → nominal/monitor/elevated` based on thrash state
+- UMA: headroom-based verdict, no burst/maf (not meaningful on coherent UMA)
+- Structural zombie OOM preserved for UMA no-swap case
+- WATCH threshold requires `thrash.thrash_score > 0 || !thrash.settled` — prevents false WATCH on healthy discrete GPU
+
+**`--cupti-debug` flag**
+- Dumps every raw CUPTI unified memory activity record to stderr
+- Per record: counter kind, value, start/end timestamps, processId
+- Zero cost when not set — gated by global flag
+- Purpose: verify CUPTI UM counter behavior on GB10 coherent UMA before building kernel correlation
+
+**`LD_LIBRARY_PATH` forwarding in child**
+- Previously stripped from popen environment, breaking child CUPTI initialization
+- Now forwarded correctly — resolves missing CUPTI data in cold pass children
+
+### Fixed
+
+- `cold_child_failures` correctly increments on popen failure (was silently dropped)
+- `zero_end_ts_skipped` counter: GPU_PAGE_FAULT records with `end=0` skipped correctly; HTOD/DTOH records with `end=0` preserved (legitimate on Pascal and other platforms)
+- `any_warning` gate: WATCH verdict no longer fires on settled healthy Pascal runs
+
+### Removed
+
+- `check_driver_regression()` function and all call sites — driver version warnings removed entirely. Driver issues are vendor territory; stale warnings damage tool credibility. Driver landscape documented in KB notes only.
+
+### Community patches integrated (from adi-sonusflow fork)
+
+- CUDA 13 prefetch API compatibility wrapper (`#if CUDART_VERSION >= 13000`)
+- LPDDR5X memory type detection
+- UMA throttle guard (NVML throttle bits gated on coherent UMA)
+- `vram_total==0` fallback for NVML memory reporting on GB10
+- Prefetch API wrappers for CUDA 13.x
+- Ratio ladder correction
+
+### Schema
+- Bumped to `2.8`
+
+---
+
 ## v8.2 — schema 2.7
 
 ### Added
