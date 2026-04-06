@@ -4,6 +4,29 @@ All notable changes to cuda-unified-memory-analyzer are documented here.
 
 ---
 
+## v8.3.1 — schema 2.8
+
+### Fixed
+
+**`ceiling_utilization` overflow on memory-pressured systems**
+- `ceiling_utilization` could exceed 1.0 (display as `ceil=126%`) on systems
+  where committed RAM exceeded `uma_allocatable`
+- Root cause: `committed = mem_total - mem_avail` was divided by `mem_avail`
+  (FULL_EXPLICIT) — on systems with more than half of RAM in use, committed
+  exceeds the allocatable pool and the ratio blows past 100%
+- Fix: compute `raw_util` first, cap `ceiling_utilization` at `std::min(1.0, raw_util)`
+- Added `overcommit` boolean flag — set true when `raw_util > 1.0`
+- Terminal output appends `[overcommit]` when flag is set
+- JSON adds `"overcommit": true/false` field after `ceiling_utilization`
+- Previously this produced a false `VERDICT CRITICAL` on healthy systems under
+  moderate host memory pressure — now correctly reflects actual state
+
+### Schema
+- No schema version bump — `overcommit` field added to JSON host block (2.8 compatible)
+
+---
+
+
 ## v8.3 — schema 2.8
 
 ### Added
