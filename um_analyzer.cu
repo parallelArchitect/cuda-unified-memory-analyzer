@@ -627,6 +627,7 @@ struct HostInfo {
   // committed = MemTotal - MemAvailable - SwapFree  (pages in active use).
   // ceiling_utilization = committed / uma_allocatable.
   double      ceiling_utilization = 0.0;
+  bool        overcommit            = false;  // committed > uma_allocatable
   std::string prerun_pressure_verdict = "UNKNOWN";
 
   // Buffer cache recovery — what drop_caches would free right now.
@@ -771,7 +772,9 @@ static void compute_uma_allocatable(HostInfo& h, const std::string& um_paradigm)
   if (h.uma_allocatable > 0) {
     uint64_t committed = (h.mem_total > h.mem_avail)
                          ? (h.mem_total - h.mem_avail) : 0;
-    h.ceiling_utilization = (double)committed / (double)h.uma_allocatable;
+    double raw_util = (double)committed / (double)h.uma_allocatable;
+    h.overcommit = (raw_util > 1.0);
+    h.ceiling_utilization = std::min(1.0, raw_util);
 
     if      (h.ceiling_utilization < 0.50) h.prerun_pressure_verdict = "CLEAR";
     else if (h.ceiling_utilization < 0.70) h.prerun_pressure_verdict = "ELEVATED";
@@ -2405,6 +2408,7 @@ static void write_run_json(const fs::path& run_dir,
     j << "    \"cudamemgetinfo_error_pct\": null,\n";
   }
   j << "    \"ceiling_utilization\": "    << std::setprecision(4) << host.ceiling_utilization      << ",\n";
+  j << "    \"overcommit\": "               << (host.overcommit ? "true" : "false")                  << ",\n";
   j << "    \"prerun_pressure_verdict\": \"" << json_escape(host.prerun_pressure_verdict)           << "\",\n";
   j << "    \"cache_recoverable_bytes\": " << host.cache_recoverable_bytes                          << ",\n";
   j << "    \"cached_bytes\": "           << host.cached                                            << ",\n";
@@ -3997,7 +4001,8 @@ int main(int argc, char** argv) {
       << "free=" << gib(emv.free_bytes) << " GiB"
       << "  total=" << gib(emv.total_bytes) << " GiB"
       << "  src=" << emv.source
-      << "  ceil=" << std::setprecision(0) << host.ceiling_utilization * 100.0 << "%";
+      << "  ceil=" << std::setprecision(0) << host.ceiling_utilization * 100.0 << "%"
+      << (host.overcommit ? "  [overcommit]" : "");
     std::cout << "  " << std::left << std::setw(10) << "memory"
               << std::setw(12) << memory_v << v.str() << "\n";
   }
