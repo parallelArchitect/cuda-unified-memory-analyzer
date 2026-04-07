@@ -3107,6 +3107,11 @@ int main(int argc, char** argv) {
   nv.um_paradigm = query_um_paradigm(device);
 
   cupti_init(device, nv.um_paradigm, prop.major);  // sm_major gates CPU_PAGE_FAULT/THROTTLING (Volta+ only)
+  if (g_cupti_debug) {
+    uint32_t cupti_ver = 0;
+    cuptiGetVersion(&cupti_ver);
+    fprintf(stderr, "[CUPTI_DBG] CUPTI version: %u  (struct: CUpti_ActivityUnifiedMemoryCounter2)\n", cupti_ver);
+  }
 
   // Transport classification — drives pass labels and metric suppression
   TransportInfo transport = classify_transport(nv.um_paradigm, nv.nvlink_active_links);
