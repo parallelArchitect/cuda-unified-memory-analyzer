@@ -19,6 +19,15 @@ All notable changes to cuda-unified-memory-analyzer are documented here.
   post-reboot, preventing driver initialization entirely. A warm reboot does not
   retrain the PCIe link. Only a cold power cycle forces fresh link negotiation.
 
+**CUPTI version logged in --cupti-debug output**
+- Runtime CUPTI version number now printed at startup when --cupti-debug is active
+- Automatically detects Counter2 vs Counter3 struct version: Counter2 on CUDA < 12.8,
+  Counter3 on CUDA 12.8+/13.x
+- Enables definitive diagnosis of struct mismatch when GB10 validation data arrives
+
+**Version string updated in output header and source**
+- Header and terminal output now correctly show V8.3.2
+
 ### Schema
 - No schema changes (2.8 compatible)
 
