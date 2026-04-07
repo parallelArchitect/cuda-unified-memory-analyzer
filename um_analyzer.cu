@@ -3110,7 +3110,8 @@ int main(int argc, char** argv) {
   if (g_cupti_debug) {
     uint32_t cupti_ver = 0;
     cuptiGetVersion(&cupti_ver);
-    fprintf(stderr, "[CUPTI_DBG] CUPTI version: %u  (struct: CUpti_ActivityUnifiedMemoryCounter2)\n", cupti_ver);
+    uint32_t counter_struct_ver = (cupti_ver >= 130000) ? 3 : 2;
+    fprintf(stderr, "[CUPTI_DBG] CUPTI version: %u  (struct: CUpti_ActivityUnifiedMemoryCounter%u)\n", cupti_ver, counter_struct_ver);
   }
 
   // Transport classification — drives pass labels and metric suppression
