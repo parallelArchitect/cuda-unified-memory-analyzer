@@ -1,5 +1,5 @@
 /***********************************************************************
-   UM Analyzer V8.3   -   schema 2.8
+   UM Analyzer V8.3.2  -   schema 2.8
   Author : parallelArchitect
   GitHub : https://github.com/parallelArchitect
   License: MIT
@@ -3198,7 +3198,7 @@ int main(int argc, char** argv) {
 
   const std::string HDR(108, '=');
   std::cout << "\n" << HDR << "\n";
-  std::cout << "  CUDA Unified Memory Analyzer  V8.3\n";
+  std::cout << "  CUDA Unified Memory Analyzer  V8.3.2\n";
   std::cout << HDR << "\n\n";
 
   std::cout << "  GPU      " << nv.name << "\n";
