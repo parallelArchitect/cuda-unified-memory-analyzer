@@ -4,6 +4,26 @@ All notable changes to cuda-unified-memory-analyzer are documented here.
 
 ---
 
+## v8.3.2 — schema 2.8
+
+### Fixed
+
+**NVML initialization failure message — actionable for DGX Spark**
+- Previous message: `"NVML failed."` — no diagnostic value
+- New message identifies the failure, explains the likely cause on GB10, and provides
+  the correct recovery steps:
+  - Full cold power cycle (wall disconnect, 60 seconds)
+  - Run `spark-gpu-throttle-check` after reboot to verify power state
+- Backed by forensic analysis of a real GB10 sosreport (March 2026) confirming
+  that a Grace firmware BERT reset can leave the PCIe link degraded to 2.5GT/s x1
+  post-reboot, preventing driver initialization entirely. A warm reboot does not
+  retrain the PCIe link. Only a cold power cycle forces fresh link negotiation.
+
+### Schema
+- No schema changes (2.8 compatible)
+
+---
+
 ## v8.3.1 — schema 2.8
 
 ### Fixed
