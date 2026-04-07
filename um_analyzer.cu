@@ -3102,7 +3102,7 @@ int main(int argc, char** argv) {
   double theoretical_bandwidth = theoretical_bw(prop);
 
   NvmlInfo nv = read_nvml(device);  // opens g_nvml session, keeps it alive
-  if (!nv.ok) { std::cerr << "NVML failed.\n"; return 1; }
+  if (!nv.ok) { std::cerr << "ERROR: NVML initialization failed — GPU driver not responding.\n" << "If this is a DGX Spark, perform a full cold power cycle (wall disconnect, 60 seconds).\n" << "Run spark-gpu-throttle-check after reboot to verify power state before retrying.\n"; return 1; }
 
   nv.um_paradigm = query_um_paradigm(device);
 
