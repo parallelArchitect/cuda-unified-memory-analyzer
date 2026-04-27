@@ -2,6 +2,8 @@
 
 A hardware-aware CUDA diagnostic tool for analyzing Unified Memory migration behavior, residency stability, and transport performance on NVIDIA GPUs.
 
+GB10 field data and confirmed baselines: https://forums.developer.nvidia.com/t/gb10-hardware-baseline-first-direct-measurements-and-findings/367851
+
 All measurements come from live CUDA execution and runtime hardware queries.
 
 ---
