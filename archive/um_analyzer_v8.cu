@@ -284,7 +284,13 @@ static void cupti_init(int device_id)
     if (cuptiActivityRegisterCallbacks(cupti_buf_requested,
                                        cupti_buf_completed) != CUPTI_SUCCESS) return;
     cuptiActivityConfigureUnifiedMemoryCounter(cfg, 3);   // non-fatal if partial
-    if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER) != CUPTI_SUCCESS) return;
+    CUptiResult cupti_en = cuptiActivityEnable(CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER);
+    if (cupti_en != CUPTI_SUCCESS) {
+        fprintf(stderr, "[cupti] UNIFIED_MEMORY_COUNTER unavailable (code %d)"
+                        " — known limitation on hardware-coherent UMA (GB10, GH200)\n",
+                        (int)cupti_en);
+        return;
+    }
     g_cupti_ok = true;
 }
 
