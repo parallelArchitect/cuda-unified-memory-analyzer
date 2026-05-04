@@ -3131,6 +3131,7 @@ int main(int argc, char** argv) {
     else if (maj == 8 && min == 9)       nv.arch_name = "Ada";
     else if (maj == 9)                   nv.arch_name = "Hopper";
     else if (maj == 10)                  nv.arch_name = "Blackwell";
+    else if (maj == 12)                  nv.arch_name = "GB10";  // Grace Blackwell, SM 12.1
     else                                 nv.arch_name = "UNKNOWN";
   }
 
